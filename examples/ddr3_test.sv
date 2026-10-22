@@ -80,6 +80,13 @@ localparam [2:0] S_CALIB = 0, S_WRITE = 1, S_WRITE_NEXT = 2, S_READ = 3, S_READ_
 reg [2:0] state;
 reg [15:0] pass;
 reg error, toggle;
+// the pattern of addr, a cycle late: moved holds back a write meanwhile
+reg [DQ_W-1:0] want;
+reg moved;
+// a read word, checked in the cycle after it came
+reg chk, chk_bad, chk_last;
+reg [ADDR_W-1:0] chk_addr;
+reg [DQ_W-1:0] chk_got, chk_want;
 // the errors of the current pass and the first of them
 reg [31:0] errors;
 reg [ADDR_W-1:0] first_addr;
@@ -95,6 +102,14 @@ initial begin
     pass = 0;
     error = 0;
     toggle = 0;
+    want = 0;
+    moved = 0;
+    chk = 0;
+    chk_bad = 0;
+    chk_last = 0;
+    chk_addr = 0;
+    chk_got = 0;
+    chk_want = 0;
     errors = 0;
     first_addr = 0;
     first_got = 0;
@@ -111,27 +126,23 @@ end
 assign led = error || calib_fail || toggle;
 
 wire idle = !busy && !rd && !wr && !refresh;
-wire [DQ_W-1:0] want = DQ_W'(pattern(addr, pass));
-wire bad = dout != want;
-wire first = errors == 0;
+always @(posedge clk) want <= DQ_W'(pattern(addr, pass));
 
 always @(posedge clk) begin
     rd <= 0;
     wr <= 0;
     refresh <= 0;
-    say_calib <= 0;
-    say_pass <= 0;
+    moved <= 0;
+    chk <= 0;
     if (rst) begin
         state <= S_CALIB;
-        error <= 0;
     end else case (state)
         S_CALIB: if (calib_done) begin
-            say_calib <= 1;
             addr <= 0;
-            errors <= 0;
+            moved <= 1;
             state <= calib_fail ? S_FAILED : S_WRITE;
         end
-        S_WRITE: if (idle) begin
+        S_WRITE: if (idle && !moved) begin
             if (refresh_due) refresh <= 1;
             else begin
                 wr <= 1;
@@ -142,6 +153,7 @@ always @(posedge clk) begin
         // addr stays while wr is high
         S_WRITE_NEXT: begin
             addr <= addr + 1'd1;
+            moved <= 1;
             state <= S_WRITE;
             if (addr == ADDR_W'(WORDS - 1)) begin
                 addr <= 0;
@@ -156,20 +168,14 @@ always @(posedge clk) begin
             end
         end
         S_READ_WAIT: if (data_ready) begin
-            if (bad) begin
-                error <= 1;
-                errors <= errors + 1'd1;
-                if (first) {first_addr, first_got, first_want} <= {addr, dout, want};
-            end
+            chk <= 1;
+            chk_bad <= dout != want;
+            chk_last <= addr == ADDR_W'(WORDS - 1);
+            {chk_addr, chk_got, chk_want} <= {addr, dout, want};
             addr <= addr + 1'd1;
+            moved <= 1;
             state <= S_READ;
             if (addr == ADDR_W'(WORDS - 1)) begin
-                rep_pass <= pass + 1'd1;
-                rep_errors <= errors + 32'(bad);
-                {rep_addr, rep_got, rep_want} <= first && bad ? {addr, dout, want}
-                                                              : {first_addr, first_got, first_want};
-                say_pass <= 1;
-                errors <= 0;
                 addr <= 0;
                 pass <= pass + 1'd1;
                 toggle <= !toggle;
@@ -179,6 +185,34 @@ always @(posedge clk) begin
         S_FAILED: ;
         default: state <= S_CALIB;
     endcase
+end
+
+// the check of the read words, the report of the calibration and the passes
+wire first = errors == 0;
+always @(posedge clk) begin
+    say_calib <= 0;
+    say_pass <= 0;
+    if (rst) begin
+        error <= 0;
+        errors <= 0;
+    end else begin
+        if (state == S_CALIB && calib_done) say_calib <= 1;
+        if (chk) begin
+            if (chk_bad) begin
+                error <= 1;
+                errors <= errors + 1'd1;
+                if (first) {first_addr, first_got, first_want} <= {chk_addr, chk_got, chk_want};
+            end
+            if (chk_last) begin
+                rep_pass <= pass;
+                rep_errors <= errors + 32'(chk_bad);
+                {rep_addr, rep_got, rep_want} <= first && chk_bad ? {chk_addr, chk_got, chk_want}
+                                                                  : {first_addr, first_got, first_want};
+                say_pass <= 1;
+                errors <= 0;
+            end
+        end
+    end
 end
 
 // the report lines, left aligned in line, which shifts out from the top
