@@ -3,9 +3,8 @@
 `include "ddr3/ddr3_phy_2to1.sv"
 `include "ddr3_test.sv"
 
-// ddr3_phy_2to1 with GW5A = 1 and CLK270 = 0 on the Tang Mega 138K: clk = CK
-// = the 50 MHz board clock (100 MT/s), DLL-off mode, CK and DQS through output
-// IODELAY.
+// ddr3_phy_2to1 with GW5A = 1 on the Tang Mega 138K without a PLL: clk = CK =
+// the 50 MHz board clock (100 MT/s), DLL-off mode.
 module top (
     input         clk,
     output        led,
@@ -70,7 +69,7 @@ ddr3_ctrl #(
     .phy_rvalid(phy_rvalid), .phy_rdata(phy_rdata), .phy_ready(phy_ready)
 );
 
-ddr3_phy_2to1 #(.DQ_W(DQ_W), .ROW_W(ROW_W), .BA_W(BA_W), .TCK_PS(TCK_PS), .DW(DW), .GW5A(1), .CLK270(0)) phy (
+ddr3_phy_2to1 #(.DQ_W(DQ_W), .ROW_W(ROW_W), .BA_W(BA_W), .TCK_PS(TCK_PS), .DW(DW), .GW5A(1)) phy (
     .clk(sys_clk), .lock(1'b1), .ce(ce), .dbg_rx(),
     .phy_reset_n(phy_reset_n), .phy_cke(phy_cke), .phy_odt(phy_odt),
     .phy_cmd(phy_cmd), .phy_addr(phy_addr), .phy_ba(phy_ba),

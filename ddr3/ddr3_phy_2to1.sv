@@ -14,7 +14,8 @@
 // The controller runs on every clk cycle (ce is always 1, NPH=1).
 //   commands, addresses  ODDR with D0=D1, change at clk rising edges
 //   CK                   ODDR, rises at clk rising edges, plus WR_DLY taps
-//                        (25ps) of output IODELAY, about a quarter of a CK:
+//                        (GW2A 25ps, GW5A 12.5ps) of output IODELAY, about a
+//                        quarter of a CK:
 //                        it rises in the middle of the commands' setup/hold
 //   DQ, DM               ODDR, beat 2k in the high and 2k+1 in the low phase
 //   DQS                  ODDR, high in the high phases of the burst, with the
@@ -33,17 +34,13 @@
 // within the sample, set as (NF-1-f)*TAPS IODELAY taps: more delay samples
 // the data earlier. In DLL-off mode the DRAM starts beat 0 tDQSCK (1-10ns)
 // after the (CL-1)-th CK edge.
-// GW5A: CK and DQS come from ODDRs on clk270, which puts them a quarter CK
-// after the commands and DQ like the GW2A output delay. CK# and DQS# have
-// their own ODDRs: apicula has no emulated LVDS on the true LVDS pins of the
-// Mega's CK and DQS. RESET# comes from the fabric: the 138C chip database has
-// no clock for the IO logic of its pin. The GW5A IODELAY loads the read delay
-// from DLYSTEP on an SDTAP pulse; its 255 taps of 12.5ps span less than half
-// a clk cycle at 100 MHz.
-// GW5A with CLK270 = 0, for a clk without a second phase: CK, CK#, DQS and DQS#
-// come from ODDRs on clk through a static output IODELAY each, like on the
-// GW2A. Its 255 taps (3.2ns) are less than a quarter CK below 80 MHz, which
-// leaves the DRAM's setup and hold times ample margin at such clocks.
+// GW5A: CK# and DQS# have their own ODDR and output IODELAY: apicula has no
+// emulated LVDS on the true LVDS pins of the Mega's CK and DQS. The 255 taps
+// of the output delay (3.2ns) are less than a quarter CK below 80 MHz, which
+// leaves the DRAM's setup and hold times ample margin at such clocks. RESET#
+// comes from the fabric: the 138C chip database has no clock for the IO logic
+// of its pin. The GW5A IODELAY loads the read delay from DLYSTEP on an SDTAP
+// pulse; its 255 taps span less than half a clk cycle at 100 MHz.
 module ddr3_phy_2to1 #(
     parameter DQ_W  = 32,
     parameter ROW_W = 15,
@@ -54,7 +51,6 @@ module ddr3_phy_2to1 #(
     parameter TCK_PS = 9259,            // clk period
     parameter NF    = 8,                // read delay steps per sample
     parameter GW5A  = 0,                // the GW5AST-138C PHY
-    parameter CLK270 = GW5A,            // GW5A: CK and DQS from ODDRs on clk270, else through output IODELAY
     // IODELAY taps (GW2A 25ps, GW5A 12.5ps) per step: the steps of a sample,
     // up to all taps (GW2A 127, GW5A 255)
     parameter TAPS  = TCK_PS * 10 / 2 / NF / (GW5A ? 125 : 250) < (GW5A ? 255 : 127) / (NF - 1)
@@ -67,7 +63,6 @@ module ddr3_phy_2to1 #(
     localparam LANES = DQ_W / 8
 ) (
     input                       clk,
-    input                       clk270 = 1'b0,     // GW5A with CLK270: clk delayed by 3/4 of a cycle
     input                       lock,
     output                      ce,
 
@@ -151,11 +146,7 @@ for (genvar i = 0; i < BA_W; i++) begin : g_ba
 end
 
 // CK: high from a quarter to three quarters of the clk cycle
-if (GW5A && CLK270) begin : g_ck_270
-    // D0 from 3/4 until 1/4 of the next clk cycle, D1 after that
-    ODDR oddr_ck(.D0(1'b0), .D1(1'b1), .TX(1'b0), .CLK(clk270), .Q0(ddr_ck), .Q1());
-    ODDR oddr_ck_n(.D0(1'b1), .D1(1'b0), .TX(1'b0), .CLK(clk270), .Q0(ddr_ck_n), .Q1());
-end else if (GW5A) begin : g_ck_dly5
+if (GW5A) begin : g_ck_dly5
     wire ck_q, ck_n_q;
     ODDR oddr_ck(.D0(1'b1), .D1(1'b0), .TX(1'b0), .CLK(clk), .Q0(ck_q), .Q1());
     ODDR oddr_ck_n(.D0(1'b0), .D1(1'b1), .TX(1'b0), .CLK(clk), .Q0(ck_n_q), .Q1());
@@ -218,16 +209,7 @@ initial dqs_oen = 0;
 always @(posedge clk) dqs_oen <= r_act;
 
 for (genvar l = 0; l < LANES; l++) begin : g_lane
-    if (GW5A && CLK270) begin : g_dqs_270
-        // sampled at 3/4 of the cycle before, like CK: high from a quarter
-        // to three quarters of the cycle in which the ODDRs on clk send the
-        // burst's beats
-        wire qd, qnd;
-        ODDR oddr_dqs(.D0(1'b0), .D1(w_burst), .TX(1'b0), .CLK(clk270), .Q0(qd), .Q1());
-        ODDR oddr_dqs_n(.D0(1'b1), .D1(!w_burst), .TX(1'b0), .CLK(clk270), .Q0(qnd), .Q1());
-        IOBUF buf_dqs(.I(qd), .OEN(dqs_oen), .O(), .IO(ddr_dqs[l]));
-        IOBUF buf_dqs_n(.I(qnd), .OEN(dqs_oen), .O(), .IO(ddr_dqs_n[l]));
-    end else if (GW5A) begin : g_dqs_dly5
+    if (GW5A) begin : g_dqs_dly5
         wire q, qn, qd, qnd;
         ODDR oddr_dqs(.D0(w_burst), .D1(1'b0), .TX(1'b0), .CLK(clk), .Q0(q), .Q1());
         ODDR oddr_dqs_n(.D0(!w_burst), .D1(1'b1), .TX(1'b0), .CLK(clk), .Q0(qn), .Q1());

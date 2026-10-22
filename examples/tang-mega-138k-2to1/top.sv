@@ -5,7 +5,7 @@
 `include "ddr3_test.sv"
 
 // ddr3_phy_2to1 with GW5A = 1 on the Tang Mega 138K: a PLL makes clk = CK =
-// 100 MHz (200 MT/s) and clk270 from the 50 MHz board clock, DLL-off mode.
+// 100 MHz (200 MT/s) from the 50 MHz board clock, DLL-off mode.
 module top (
     input         clk,
     output        led,
@@ -32,10 +32,10 @@ localparam ADDR_W = BA_W + ROW_W + COL_W, LANES = DQ_W / 8;
 localparam SYS_FREQ = 100_000_000;
 localparam TCK_PS = 1_000_000 / (SYS_FREQ / 1_000_000);
 
-wire sys_clk, clk270, lock;
+wire sys_clk, lock;
 // the Gowin simulation models of the IO logic refer to GSR
 GSR GSR(.GSRI(1'b1));
-ddr3_clk_2to1_tang_mega_138k clocks(.clkin(clk), .clk(sys_clk), .clk270(clk270), .lock(lock));
+ddr3_clk_2to1_tang_mega_138k clocks(.clkin(clk), .clk(sys_clk), .lock(lock));
 
 reg [7:0] reset_cnt;
 initial reset_cnt = 0;
@@ -75,7 +75,7 @@ ddr3_ctrl #(
 );
 
 ddr3_phy_2to1 #(.DQ_W(DQ_W), .ROW_W(ROW_W), .BA_W(BA_W), .TCK_PS(TCK_PS), .DW(DW), .GW5A(1)) phy (
-    .clk(sys_clk), .clk270(clk270), .lock(lock), .ce(ce), .dbg_rx(),
+    .clk(sys_clk), .lock(lock), .ce(ce), .dbg_rx(),
     .phy_reset_n(phy_reset_n), .phy_cke(phy_cke), .phy_odt(phy_odt),
     .phy_cmd(phy_cmd), .phy_addr(phy_addr), .phy_ba(phy_ba),
     .phy_wr(phy_wr), .phy_wr_ph(phy_wr_ph), .phy_wdata(phy_wdata), .phy_wmask(phy_wmask),
