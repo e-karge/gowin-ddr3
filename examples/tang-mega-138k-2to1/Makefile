@@ -1,0 +1,7 @@
+BOARD = tang-mega-138k
+DEVICE = GW5AST-LV138PG484AC1/I0
+FAMILY = GW5AST-138C
+SYNTH_FAMILY = gw5a
+TARGET = tangmega138k
+
+include ../common.mk
