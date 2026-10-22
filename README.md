@@ -75,16 +75,23 @@ fails.
 | Tang Primer 20K | `ddr3_phy_2to1` | [segments-iologic](https://github.com/e-karge/apicula/tree/segments-iologic) | [upstream main](https://github.com/YosysHQ/nextpnr/tree/main) | nextpnr fails to route, or aborts with `w2n_entry == nullptr` |
 | Tang Console 138K | `ddr3_phy_slow`, `IOBFF=1` | [gw5a-iob-regs](https://github.com/e-karge/apicula/tree/gw5a-iob-regs) | [gowin-gw5a-iob-regs](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iob-regs) | gowin_pack stops with `NameError: name 'av' is not defined` |
 | Tang Console 138K | `ddr3_phy_2to1`, `GW5A=1`, 50 MHz | [gw5a-iodelay](https://github.com/e-karge/apicula/tree/gw5a-iodelay) | [gowin-gw5a-iodelay](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iodelay) | nextpnr crashes while packing the IODELAYs |
-| Tang Console 138K | `ddr3_phy_2to1`, `GW5A=1`, 100 MHz | [gw5a-iodelay](https://github.com/e-karge/apicula/tree/gw5a-iodelay) | [gowin-gw5a-iodelay](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iodelay) | nextpnr crashes while packing the IODELAYs |
+| Tang Console 138K | `ddr3_phy_2to1`, `GW5A=1`, 100 MHz | [gw5a-iodelay](https://github.com/e-karge/apicula/tree/gw5a-iodelay) and [gw5a-pll](https://github.com/e-karge/apicula/tree/gw5a-pll) | [gowin-gw5a-iodelay](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iodelay) and [gowin-gw5a-pll](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-pll) | nextpnr crashes while packing the IODELAYs; with only the iodelay branches it can't place the PLL (`no BELs remaining to implement cell type 'PLL'`) |
+
+Two branches in a cell go into one tree: merge one into the other. In apicula,
+`gw5a-iodelay` and `gw5a-pll` both add methods at the same place in the `GW5A`
+class of `gowin_pack.py`; the merge conflicts there, and keeping both sides
+resolves it.
 
 The branches carry:
 
 * `segments-iologic`: the chip database keeps segment wires out of the IO logic
   cells, where nextpnr used IO logic input pins as gate wires and failed.
 * `gw5a-iob-regs`, `gowin-gw5a-iob-regs`: registers in the IO blocks of the GW5A.
-* `gw5a-iodelay`, `gowin-gw5a-iodelay`: the GW5A IODELAY with dynamic delay, on
-  top of the GW5AST-138C PLL, the IO block registers and the IO logic fixes of
-  the GW5AST-138C (IDDR outputs, IO logic of B pins, ODDR tristate).
+* `gw5a-iodelay`, `gowin-gw5a-iodelay`: the GW5A IODELAY with static and
+  dynamic delay. The apicula branch builds on the IO block registers and the IO
+  logic fixes of the GW5AST-138C (IDDR outputs, IO logic of B pins, ODDR
+  tristate).
+* `gw5a-pll`, `gowin-gw5a-pll`: the PLL of the GW5AST-138C.
 
 apicula keeps its chip databases in the package: after switching branches,
 rebuild them (`make` in apicula) and then nextpnr's, whose build doesn't notice
