@@ -40,6 +40,10 @@
 // no clock for the IO logic of its pin. The GW5A IODELAY loads the read delay
 // from DLYSTEP on an SDTAP pulse; its 255 taps of 12.5ps span less than half
 // a clk cycle at 100 MHz.
+// GW5A with CLK270 = 0, for a clk without a second phase: CK, CK#, DQS and DQS#
+// come from ODDRs on clk through a static output IODELAY each, like on the
+// GW2A. Its 255 taps (3.2ns) are less than a quarter CK below 80 MHz, which
+// leaves the DRAM's setup and hold times ample margin at such clocks.
 module ddr3_phy_2to1 #(
     parameter DQ_W  = 32,
     parameter ROW_W = 15,
@@ -49,19 +53,21 @@ module ddr3_phy_2to1 #(
     parameter DW    = 6,                // read delay bits per lane
     parameter TCK_PS = 9259,            // clk period
     parameter NF    = 8,                // read delay steps per sample
-    parameter GW5A  = 0,                // the GW5AST-138C PHY, with clk270
+    parameter GW5A  = 0,                // the GW5AST-138C PHY
+    parameter CLK270 = GW5A,            // GW5A: CK and DQS from ODDRs on clk270, else through output IODELAY
     // IODELAY taps (GW2A 25ps, GW5A 12.5ps) per step: the steps of a sample,
     // up to all taps (GW2A 127, GW5A 255)
     parameter TAPS  = TCK_PS * 10 / 2 / NF / (GW5A ? 125 : 250) < (GW5A ? 255 : 127) / (NF - 1)
                     ? TCK_PS * 10 / 2 / NF / (GW5A ? 125 : 250) : (GW5A ? 255 : 127) / (NF - 1),
-    parameter WR_DLY = TCK_PS / 4 / 25, // CK and DQS output delay in IODELAY taps, a quarter of a CK
+    // CK and DQS output delay in IODELAY taps, a quarter of a CK, up to all taps
+    parameter WR_DLY = GW5A ? (TCK_PS * 10 / 4 / 125 < 255 ? TCK_PS * 10 / 4 / 125 : 255) : TCK_PS / 4 / 25,
     // history index of beat 0 at read delay 0: the CK edge CL-1 after the
     // READ, the two ODDR and three IDDR/register cycles
     parameter RD_BASE = 2 * (CL + 1) + 6,
     localparam LANES = DQ_W / 8
 ) (
     input                       clk,
-    input                       clk270 = 1'b0,     // GW5A: clk delayed by 3/4 of a cycle
+    input                       clk270 = 1'b0,     // GW5A with CLK270: clk delayed by 3/4 of a cycle
     input                       lock,
     output                      ce,
 
@@ -124,6 +130,8 @@ assign ddr_cs_n = 1'b0;
 // a static output delay
 `define OUT_DLY(name, i, o) \
     IODELAY #(.C_STATIC_DLY(WR_DLY)) name(.DI(i), .SDTAP(1'b0), .SETN(1'b0), .VALUE(1'b0), .DF(), .DO(o));
+`define OUT_DLY5(name, i, o) \
+    IODELAY #(.C_STATIC_DLY(WR_DLY)) name(.DI(i), .DLYSTEP(8'd0), .SDTAP(1'b0), .VALUE(1'b0), .DF(), .DO(o));
 
 if (GW5A) begin : g_reset
     assign ddr_reset_n = phy_reset_n;
@@ -143,10 +151,18 @@ for (genvar i = 0; i < BA_W; i++) begin : g_ba
 end
 
 // CK: high from a quarter to three quarters of the clk cycle
-if (GW5A) begin : g_ck_270
+if (GW5A && CLK270) begin : g_ck_270
     // D0 from 3/4 until 1/4 of the next clk cycle, D1 after that
     ODDR oddr_ck(.D0(1'b0), .D1(1'b1), .TX(1'b0), .CLK(clk270), .Q0(ddr_ck), .Q1());
     ODDR oddr_ck_n(.D0(1'b1), .D1(1'b0), .TX(1'b0), .CLK(clk270), .Q0(ddr_ck_n), .Q1());
+end else if (GW5A) begin : g_ck_dly5
+    wire ck_q, ck_n_q;
+    ODDR oddr_ck(.D0(1'b1), .D1(1'b0), .TX(1'b0), .CLK(clk), .Q0(ck_q), .Q1());
+    ODDR oddr_ck_n(.D0(1'b0), .D1(1'b1), .TX(1'b0), .CLK(clk), .Q0(ck_n_q), .Q1());
+    /* verilator lint_off PINNOTFOUND */ /* verilator lint_off PINMISSING */
+    `OUT_DLY5(dly_ck, ck_q, ddr_ck)
+    `OUT_DLY5(dly_ck_n, ck_n_q, ddr_ck_n)
+    /* verilator lint_on PINMISSING */ /* verilator lint_on PINNOTFOUND */
 end else begin : g_ck_dly
     wire ck_q, ck_d;
     ODDR oddr_ck(.D0(1'b1), .D1(1'b0), .TX(1'b0), .CLK(clk), .Q0(ck_q), .Q1());
@@ -202,13 +218,23 @@ initial dqs_oen = 0;
 always @(posedge clk) dqs_oen <= r_act;
 
 for (genvar l = 0; l < LANES; l++) begin : g_lane
-    if (GW5A) begin : g_dqs_270
+    if (GW5A && CLK270) begin : g_dqs_270
         // sampled at 3/4 of the cycle before, like CK: high from a quarter
         // to three quarters of the cycle in which the ODDRs on clk send the
         // burst's beats
         wire qd, qnd;
         ODDR oddr_dqs(.D0(1'b0), .D1(w_burst), .TX(1'b0), .CLK(clk270), .Q0(qd), .Q1());
         ODDR oddr_dqs_n(.D0(1'b1), .D1(!w_burst), .TX(1'b0), .CLK(clk270), .Q0(qnd), .Q1());
+        IOBUF buf_dqs(.I(qd), .OEN(dqs_oen), .O(), .IO(ddr_dqs[l]));
+        IOBUF buf_dqs_n(.I(qnd), .OEN(dqs_oen), .O(), .IO(ddr_dqs_n[l]));
+    end else if (GW5A) begin : g_dqs_dly5
+        wire q, qn, qd, qnd;
+        ODDR oddr_dqs(.D0(w_burst), .D1(1'b0), .TX(1'b0), .CLK(clk), .Q0(q), .Q1());
+        ODDR oddr_dqs_n(.D0(!w_burst), .D1(1'b1), .TX(1'b0), .CLK(clk), .Q0(qn), .Q1());
+        /* verilator lint_off PINNOTFOUND */ /* verilator lint_off PINMISSING */
+        `OUT_DLY5(dly_dqs, q, qd)
+        `OUT_DLY5(dly_dqs_n, qn, qnd)
+        /* verilator lint_on PINMISSING */ /* verilator lint_on PINNOTFOUND */
         IOBUF buf_dqs(.I(qd), .OEN(dqs_oen), .O(), .IO(ddr_dqs[l]));
         IOBUF buf_dqs_n(.I(qnd), .OEN(dqs_oen), .O(), .IO(ddr_dqs_n[l]));
     end else begin : g_dqs_dly
@@ -366,6 +392,7 @@ end
 
 `undef ODDR1
 `undef OUT_DLY
+`undef OUT_DLY5
 
 endmodule
 

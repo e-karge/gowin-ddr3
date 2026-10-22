@@ -22,7 +22,7 @@ DLL-off mode.
 | `ddr3/ddr3_init.sv` | power-up sequence and mode registers |
 | `ddr3/ddr3_calib.sv` | read calibration |
 | `ddr3/ddr3_phy_slow.sv` | PHY from fabric or IO block registers: CK = clk/2, both families |
-| `ddr3/ddr3_phy_2to1.sv` | PHY with ODDR/IDDR and IODELAY: CK = clk; GW2A, and GW5AST-138C with `GW5A=1` |
+| `ddr3/ddr3_phy_2to1.sv` | PHY with ODDR/IDDR and IODELAY: CK = clk; GW2A, and GW5AST-138C with `GW5A=1` (with `CLK270=0` without a PLL) |
 | `ddr3/clk/ddr3_clk_2to1_tang_primer_20k.sv` | rPLL for `ddr3_phy_2to1` on the Tang Primer 20K: 108 MHz from 27 MHz |
 | `ddr3/clk/ddr3_clk_2to1_tang_mega_138k.sv` | PLL for `ddr3_phy_2to1` on the Tang Console 138K: 100 MHz and its 270° phase from 50 MHz |
 | `examples/` | a memory test per board and PHY |
@@ -51,6 +51,7 @@ a refresh timer.
 | Tang Primer 20K | `ddr3_phy_slow` | 27 MHz | 13.5 MHz | 27 MT/s, 54 MB/s | 8 MB |
 | Tang Primer 20K | `ddr3_phy_2to1` | 108 MHz | 108 MHz | 216 MT/s, 432 MB/s | 8 MB |
 | Tang Console 138K | `ddr3_phy_slow`, `IOBFF=1` | 50 MHz | 25 MHz | 50 MT/s, 200 MB/s | 16 MB |
+| Tang Console 138K | `ddr3_phy_2to1`, `GW5A=1`, `CLK270=0` | 50 MHz | 50 MHz | 100 MT/s, 400 MB/s | |
 | Tang Console 138K | `ddr3_phy_2to1`, `GW5A=1` | 100 MHz | 100 MHz | 200 MT/s, 800 MB/s | 16 MB |
 
 The Tang Primer 20K has one 16 bit 1Gb chip, the Tang Console 138K two 16 bit
@@ -72,7 +73,8 @@ fails.
 | Tang Primer 20K | `ddr3_phy_slow` | [upstream master](https://github.com/YosysHQ/apicula/tree/master) | [upstream main](https://github.com/YosysHQ/nextpnr/tree/main) | |
 | Tang Primer 20K | `ddr3_phy_2to1` | [segments-iologic](https://github.com/e-karge/apicula/tree/segments-iologic) | [upstream main](https://github.com/YosysHQ/nextpnr/tree/main) | nextpnr fails to route, or aborts with `w2n_entry == nullptr` |
 | Tang Console 138K | `ddr3_phy_slow`, `IOBFF=1` | [gw5a-iob-regs](https://github.com/e-karge/apicula/tree/gw5a-iob-regs) | [gowin-gw5a-iob-regs](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iob-regs) | gowin_pack stops with `NameError: name 'av' is not defined` |
-| Tang Console 138K | `ddr3_phy_2to1`, `GW5A=1` | [gw5a-iodelay](https://github.com/e-karge/apicula/tree/gw5a-iodelay) | [gowin-gw5a-iodelay](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iodelay) | nextpnr stops: it has no GW5AST-138C PLL and no GW5A IODELAY |
+| Tang Console 138K | `ddr3_phy_2to1`, `GW5A=1`, `CLK270=0` | [gw5a-iodelay](https://github.com/e-karge/apicula/tree/gw5a-iodelay) | [gowin-gw5a-iodelay](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iodelay) | nextpnr crashes while packing the IODELAYs |
+| Tang Console 138K | `ddr3_phy_2to1`, `GW5A=1` | [gw5a-iodelay](https://github.com/e-karge/apicula/tree/gw5a-iodelay) | [gowin-gw5a-iodelay](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iodelay) | nextpnr crashes while packing the IODELAYs |
 
 The branches carry:
 
@@ -136,7 +138,10 @@ delay of a lane picks the sample and the IODELAY setting within it.
 * The fabric runs at CK: DLL-off mode, CL = CWL = 6, CK up to 125 MHz.
 * CK and DQS are a quarter CK later than the commands and DQ, so that their
   edges sit in the middle of the bits: on the GW2A through output IODELAY, on
-  the GW5A from ODDRs on clk270.
+  the GW5A from ODDRs on clk270. With `CLK270=0` the GW5A takes them through
+  output IODELAY too, for a clock straight from the board: its 255 taps of
+  12.5 ps (3.2 ns) are less than a quarter CK below 80 MHz, still ample for
+  the DRAM's setup and hold times at such clocks.
 * The tristate of DQ and DQS comes from fabric registers: an ODDR with its
   tristate output in use held its data after the first beats of a burst.
 * On the GW5A, CK# and DQS# have their own ODDRs (true LVDS pins), and RESET#
