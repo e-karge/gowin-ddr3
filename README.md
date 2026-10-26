@@ -72,7 +72,7 @@ fails.
 | board | PHY | apicula | nextpnr | without the branches |
 |---|---|---|---|---|
 | Tang Primer 20K | `ddr3_phy_slow` | [upstream master](https://github.com/YosysHQ/apicula/tree/master) | [upstream main](https://github.com/YosysHQ/nextpnr/tree/main) | |
-| Tang Primer 20K | `ddr3_phy_2to1` | [segments-iologic](https://github.com/e-karge/apicula/tree/segments-iologic) | [upstream main](https://github.com/YosysHQ/nextpnr/tree/main) | nextpnr fails to route, or aborts with `w2n_entry == nullptr` |
+| Tang Primer 20K | `ddr3_phy_2to1` | [upstream master](https://github.com/YosysHQ/apicula/tree/master) | [upstream main](https://github.com/YosysHQ/nextpnr/tree/main) | |
 | Tang Console 138K | `ddr3_phy_slow`, `IOBFF=1` | [gw5a-iob-regs](https://github.com/e-karge/apicula/tree/gw5a-iob-regs) | [gowin-gw5a-iob-regs](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iob-regs) | gowin_pack doesn't switch the registers in the IO blocks on |
 | Tang Console 138K | `ddr3_phy_2to1`, `GW5A=1`, 50 MHz | [gw5a-iodelay](https://github.com/e-karge/apicula/tree/gw5a-iodelay) | [gowin-gw5a-iodelay](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iodelay) | nextpnr crashes while packing the IODELAYs |
 | Tang Console 138K | `ddr3_phy_2to1`, `GW5A=1`, 100 MHz | [gw5a-iodelay](https://github.com/e-karge/apicula/tree/gw5a-iodelay) and [gw5a-pll](https://github.com/e-karge/apicula/tree/gw5a-pll) | [gowin-gw5a-iodelay](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-iodelay) and [gowin-gw5a-pll](https://github.com/e-karge/nextpnr/tree/gowin-gw5a-pll) | nextpnr crashes while packing the IODELAYs; with only the iodelay branches it can't place the PLL (`no BELs remaining to implement cell type 'PLL'`) |
@@ -82,8 +82,6 @@ of the apicula fork has all of its branches merged.
 
 The branches carry:
 
-* `segments-iologic`: the chip database keeps segment wires out of the IO logic
-  cells, where nextpnr used IO logic input pins as gate wires and failed.
 * `gw5a-iob-regs`, `gowin-gw5a-iob-regs`: registers in the IO blocks of the GW5A.
 * `gw5a-iodelay`, `gowin-gw5a-iodelay`: the GW5A IODELAY with static and
   dynamic delay. The apicula branch builds on the IO block registers with the
